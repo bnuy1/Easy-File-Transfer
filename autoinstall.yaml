@@ -1,31 +1,36 @@
 autoinstall:
   source:
     id: ubuntu-desktop-minimal
+
   keyboard:
     layout: us
+
   timezone: America/New_York
+
   identity:
     hostname: nebula
-    identity:
+    username: admin
+    realname: administrator
+    password: '$6$PSXJ7scZNiRudiXV$aHg2BvN1kIrE8lCf7HBrhCNlNJdtYKC2IymvNUdaRGnf/HP.vX8rPSj8vI2tAVLoPl3Ka7/K3.VuJEdqq6DLz.'
+
   users:
     - name: admin
       gecos: 'administrator'
       passwd: '$6$PSXJ7scZNiRudiXV$aHg2BvN1kIrE8lCf7HBrhCNlNJdtYKC2IymvNUdaRGnf/HP.vX8rPSj8vI2tAVLoPl3Ka7/K3.VuJEdqq6DLz.'
       groups: adm, sudo
       shell: /bin/bash
+
     - name: bnuy
       gecos: 'mal'
       passwd: '$6$KhJZdkpgBifukw.X$0RHGeJBKyRYuE0Lx3KGCpz6sZ6jKabCR0sUrpXNxSDHo0koRy.B5lB4kIwwWqdzH9egNj.avSsDMiXuJX5S0h1'
-      groups: 
+      groups: []
       shell: /bin/bash
-  keyboard:
-    layout: us
-    variant: ""
-    toggle: null
+
   ssh:
     install-server: true
     allow-pw: false
     authorized-keys: []
+
   packages:
     - git
     - python3-pip
