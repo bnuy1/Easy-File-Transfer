@@ -13,9 +13,9 @@ autoinstall:
 
   identity:
     hostname: nebula
-    username: operator
+    username: ops
     realname: Fleet Administrator
-    password: '$6$PSXJ7scZNiRudiXV$aHg2BvN1kIrE8lCf7HBrhCNlNJdtYKC2IymvNUdaRGnf/HP.vX8rPSj8vI2tAVLoPl3Ka7/K3.VuJEdqq6DLz.'
+    password: '$6$/SSegMR9vi.93mqI$2cRgNQo7tgOPou5D.PMhnZzybhv0XA/H0ZnuYL7cTYF3uLRmIbLeh/guFhfY54hUKQ3H7UwHp/yA7JFMsoc3D/'
 
   ssh:
     install-server: true
@@ -53,7 +53,7 @@ autoinstall:
         id: crypt-root
         volume: part-crypt
         mapping_name: cryptroot
-        key: $6$7UBziMUiWID7hWP2$KAsEHBK9u1lR2hsgtPFOTPq.YTV1lGkay.aYlNfS7kH4K5YrBHhvNhJqRk8f8a6ZZ5e95HvVfL3KK5xEJIt0o/
+        key: RidgehIndigo-Tundra2Pine-CinderpEmber
       - type: format
         id: format-efi
         volume: part-efi
@@ -157,7 +157,7 @@ autoinstall:
       curtin in-target -- sh -c '
         mv /home /home.unsplit &&
         btrfs subvolume create /home &&
-        mv /home.unsplit/operator /home/operator &&
+        mv /home.unsplit/ops /home/ops &&
         rmdir /home.unsplit'
       curtin in-target -- btrfs subvolume create /snapshots
       curtin in-target -- mkdir -p /snapshots/home
@@ -209,5 +209,5 @@ autoinstall:
 
       bar { position top }
       EOF
-      printf '[User]\nSession=sway\nXSession=sway\n' > /target/var/lib/AccountsService/users/operator
+      printf '[User]\nSession=sway\nXSession=sway\n' > /target/var/lib/AccountsService/users/ops
       printf '[User]\nSession=sway\nXSession=sway\n' > /target/var/lib/AccountsService/users/bnuy
