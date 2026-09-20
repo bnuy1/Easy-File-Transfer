@@ -1,4 +1,6 @@
 autoinstall:
+version: 1
+
   source:
     id: ubuntu-desktop-minimal
 
