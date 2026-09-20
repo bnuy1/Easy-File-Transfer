@@ -1,6 +1,5 @@
 autoinstall:
-version: 1
-
+  version: 1
   source:
     id: ubuntu-desktop-minimal
 
@@ -9,30 +8,206 @@ version: 1
 
   timezone: America/New_York
 
+  updates: security
+  shutdown: reboot
+
   identity:
     hostname: nebula
-    username: admin
-    realname: administrator
+    username: operator
+    realname: Fleet Administrator
     password: '$6$PSXJ7scZNiRudiXV$aHg2BvN1kIrE8lCf7HBrhCNlNJdtYKC2IymvNUdaRGnf/HP.vX8rPSj8vI2tAVLoPl3Ka7/K3.VuJEdqq6DLz.'
-
-  users:
-    - name: admin
-      gecos: 'administrator'
-      passwd: '$6$PSXJ7scZNiRudiXV$aHg2BvN1kIrE8lCf7HBrhCNlNJdtYKC2IymvNUdaRGnf/HP.vX8rPSj8vI2tAVLoPl3Ka7/K3.VuJEdqq6DLz.'
-      groups: adm, sudo
-      shell: /bin/bash
-
-    - name: bnuy
-      gecos: 'mal'
-      passwd: '$6$KhJZdkpgBifukw.X$0RHGeJBKyRYuE0Lx3KGCpz6sZ6jKabCR0sUrpXNxSDHo0koRy.B5lB4kIwwWqdzH9egNj.avSsDMiXuJX5S0h1'
-      groups: []
-      shell: /bin/bash
 
   ssh:
     install-server: true
     allow-pw: false
     authorized-keys: []
 
+  user-data:
+    users:
+      - name: bnuy
+        gecos: 'mal'
+        passwd: '$6$KhJZdkpgBifukw.X$0RHGeJBKyRYuE0Lx3KGCpz6sZ6jKabCR0sUrpXNxSDHo0koRy.B5lB4kIwwWqdzH9egNj.avSsDMiXuJX5S0h1'
+        lock_passwd: False
+        shell: /bin/bash
+        ssh_authorized_keys:
+          - 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFNohenCiYWNpZXB05tskL/aP3aYWYtmO8PTz2INP0Up'
+
+  storage:
+    config:
+      - type: disk
+        id: disk-sda
+        ptable: gpt
+        path: /dev/sda
+        wipe: superblock
+      - type: partition
+        id: part-efi
+        device: disk-sda
+        size: 1024M
+        flag: boot
+        grub_device: true
+      - type: partition
+        id: part-crypt
+        device: disk-sda
+        size: -1
+      - type: dm_crypt
+        id: crypt-root
+        volume: part-crypt
+        mapping_name: cryptroot
+        key: $6$7UBziMUiWID7hWP2$KAsEHBK9u1lR2hsgtPFOTPq.YTV1lGkay.aYlNfS7kH4K5YrBHhvNhJqRk8f8a6ZZ5e95HvVfL3KK5xEJIt0o/
+      - type: format
+        id: format-efi
+        volume: part-efi
+        fstype: vfat
+      - type: mount
+        id: mount-efi
+        device: format-efi
+        path: /boot/efi
+      - type: format
+        id: format-root
+        volume: crypt-root
+        fstype: btrfs
+      - type: mount
+        id: mount-root
+        device: format-root
+        path: /
+        options: "compress=zstd"
+
   packages:
     - git
     - python3-pip
+    - fish
+    - sway
+    - foot
+    - xwayland
+    - swaylock
+    - swayidle
+    - grim
+    - wl-clipboard
+    - snapper
+    - btrfs-progs
+    - grub-btrfs
+    - ufw
+    - unattended-upgrades
+    - power-profiles-daemon
+    - systemd-zram-generator
+
+  late-commands:
+    - |
+      cat > /target/etc/systemd/zram-generator.conf <<'EOF'
+      [zram0]
+      zram-size = min(ram, 16384)
+      compression-algorithm = zstd
+      swap-priority = 100
+      EOF
+      curtin in-target -- btrfs subvolume create /swap
+      curtin in-target -- btrfs filesystem mkswapfile --size 16G /swap/swapfile
+      echo '/swap/swapfile none swap sw 0 0' >> /target/etc/fstab
+      curtin in-target -- filefrag -b 512 -v /swap/swapfile > /tmp/swapfrag
+      extents=$(grep -cE '^ *[0-9]+:' /tmp/swapfrag)
+      if [ "$extents" = 1 ]; then
+        sw_offset=$(awk '/^ *0:/ {gsub(/[.:]/, "", $4); print $4}' /tmp/swapfrag)
+        mkdir -p /target/etc/default/grub.d /target/etc/initramfs-tools/conf.d
+        echo "GRUB_CMDLINE_LINUX=\"resume=/dev/mapper/cryptroot resume_offset=${sw_offset}\"" > /target/etc/default/grub.d/99-fleet-hibernate.cfg
+        echo 'RESUME=/dev/mapper/cryptroot' > /target/etc/initramfs-tools/conf.d/resume
+      fi
+    - |
+      echo 'APT::Periodic::Update-Package-Lists "1";' > /target/etc/apt/apt.conf.d/20auto-upgrades
+      echo 'APT::Periodic::Unattended-Upgrade "1";' >> /target/etc/apt/apt.conf.d/20auto-upgrades
+      cat > /target/etc/apt/apt.conf.d/50unattended-upgrades <<'EOF'
+      Unattended-Upgrade::Allowed-Origins {
+          "${distro_id}:${distro_codename}-security";
+      };
+      Unattended-Upgrade::Automatic-Reboot "false";
+      Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+      EOF
+    - |
+      cat > /target/etc/ssh/sshd_config.d/99-fleet-hardening.conf <<'EOF'
+      PasswordAuthentication no
+      PermitRootLogin no
+      X11Forwarding no
+      MaxAuthTries 4
+      LoginGraceTime 60
+      ClientAliveInterval 300
+      EOF
+    - |
+      cat > /target/etc/sysctl.d/99-fleet-hardening.conf <<'EOF'
+      kernel.kptr_restrict=1
+      kernel.dmesg_restrict=1
+      net.ipv4.conf.all.rp_filter=1
+      net.ipv4.conf.default.rp_filter=1
+      net.ipv4.conf.all.log_martians=1
+      net.ipv4.conf.default.log_martians=1
+      net.ipv4.tcp_syncookies=1
+      net.ipv4.conf.all.accept_redirects=0
+      net.ipv4.conf.default.accept_redirects=0
+      net.ipv6.conf.all.accept_redirects=0
+      net.ipv6.conf.default.accept_redirects=0
+      net.ipv4.conf.all.send_redirects=0
+      net.ipv4.conf.default.send_redirects=0
+      vm.swappiness=100
+      EOF
+      curtin in-target -- sysctl --system
+    - |
+      curtin in-target -- ufw default deny incoming
+      curtin in-target -- ufw default allow outgoing
+      curtin in-target -- ufw allow ssh
+      curtin in-target -- ufw --force enable
+    - |
+      curtin in-target -- sh -c '
+        mv /home /home.unsplit &&
+        btrfs subvolume create /home &&
+        mv /home.unsplit/operator /home/operator &&
+        rmdir /home.unsplit'
+      curtin in-target -- btrfs subvolume create /snapshots
+      curtin in-target -- mkdir -p /snapshots/home
+      curtin in-target -- snapper -c root create-config / --snapshot-dir /snapshots
+      curtin in-target -- snapper -c home create-config /home --snapshot-dir /snapshots/home
+      sed -i 's/TIMELINE_CREATE="no"/TIMELINE_CREATE="yes"/' /target/etc/snapper/configs/root /target/etc/snapper/configs/home
+      curtin in-target -- systemctl enable snapper-timeline.timer snapper-cleanup.timer
+      mkdir -p /target/etc/default/grub-btrfs
+      echo 'GRUB_BTRFS_OVERRIDE_BOOT_PARTITION_DETECTION="true"' >> /target/etc/default/grub-btrfs/config
+      curtin in-target -- update-initramfs -u
+      curtin in-target -- update-grub
+    - |
+      mkdir -p /target/usr/share/wayland-sessions /target/etc/sway /target/var/lib/AccountsService/users
+      cat > /target/usr/share/wayland-sessions/sway.desktop <<'EOF'
+      [Desktop Entry]
+      Name=Sway
+      Comment=Sway Wayland compositor
+      Exec=/usr/bin/sway
+      TryExec=/usr/bin/sway
+      Type=Application
+      EOF
+      cat > /target/etc/sway/config <<'EOF'
+      set $mod Mod4
+      output * bg #1e1e2e solid_color
+      default_border pixel 1
+
+      input type:touchpad {
+          tap enabled
+          natural_scroll enabled
+      }
+
+      bindsym $mod+Return exec foot fish
+      bindsym $mod+Shift+Return exec foot
+      bindsym $mod+Shift+q kill
+      bindsym $mod+Shift+e exec swaymsg exit
+      bindsym $mod+Shift+r reload
+      bindsym $mod+Left focus left
+      bindsym $mod+Right focus right
+      bindsym $mod+Up focus up
+      bindsym $mod+Down focus down
+      bindsym $mod+F11 fullscreen toggle
+      bindsym $mod+l exec swaylock -f
+      bindsym Print exec foot sh -c 'grim - | wl-copy'
+
+      exec swayidle -w \
+        timeout 300 'swaylock -f' \
+        timeout 600 'swaymsg "output * dpms off"' \
+        resume 'swaymsg "output * dpms on"'
+
+      bar { position top }
+      EOF
+      printf '[User]\nSession=sway\nXSession=sway\n' > /target/var/lib/AccountsService/users/operator
+      printf '[User]\nSession=sway\nXSession=sway\n' > /target/var/lib/AccountsService/users/bnuy
